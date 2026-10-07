@@ -23,6 +23,8 @@
 
 OpenCode uses a small local plugin bridge instead of per-event hook config. The plugin lives at `.opencode/plugins/tmux-agent-sidebar.js` and can be symlinked as a single file into `~/.config/opencode/plugins/` so it coexists with any existing plugins.
 
+lain uses a Lua bridge at `.lain/tmux_agent_sidebar.lua`, loaded from `~/.config/lain/init.lua`.
+
 ## Requirements
 
 - tmux 3.0+
@@ -58,6 +60,17 @@ Reload tmux (`tmux source ~/.tmux.conf`), then press `prefix + I`. The install w
   ln -sf ~/.tmux/plugins/tmux-agent-sidebar/.opencode/plugins/tmux-agent-sidebar.js \
     ~/.config/opencode/plugins/tmux-agent-sidebar.js
   ```
+
+- **lain** — symlink the Lua bridge and require it from `init.lua`:
+
+  ```sh
+  mkdir -p ~/.config/lain/lua
+  ln -sf ~/.tmux/plugins/tmux-agent-sidebar/.lain/tmux_agent_sidebar.lua \
+    ~/.config/lain/lua/tmux_agent_sidebar.lua
+  echo 'require("tmux_agent_sidebar")' >> ~/.config/lain/init.lua
+  ```
+
+  Bridge tests: `luajit .lain/tmux_agent_sidebar_spec.lua`.
 
 Full walkthroughs: [Claude Code setup](https://hiroppy.github.io/tmux-agent-sidebar/getting-started/claude-code/) · [Codex setup](https://hiroppy.github.io/tmux-agent-sidebar/getting-started/codex/) · [OpenCode setup](https://hiroppy.github.io/tmux-agent-sidebar/getting-started/opencode/)
 

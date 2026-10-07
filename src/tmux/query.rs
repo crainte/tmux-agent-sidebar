@@ -276,7 +276,10 @@ fn parse_pane_fields_with_processes(
     // is gone. Subsequent polls short-circuit at the `AgentType::from_label`
     // check above once `@pane_agent` has been cleared. Claude is excluded
     // because its SessionEnd hook drives cleanup instead.
-    if matches!(agent, AgentType::Codex | AgentType::OpenCode) && is_shell_command(current_command)
+    if matches!(
+        agent,
+        AgentType::Codex | AgentType::OpenCode | AgentType::Lain
+    ) && is_shell_command(current_command)
     {
         let agent_still_alive = pane_pid
             .and_then(|pid| {
@@ -444,8 +447,12 @@ fn pane_output_needs_process_snapshot(all_panes_output: &str) -> bool {
             return false;
         }
         let pane_fields = &parts[session_line_field::PANE_LINE_OFFSET..];
-        AgentType::from_label(&pane_fields[pane_line_field::AGENT])
-            .is_some_and(|agent| matches!(agent, AgentType::Codex | AgentType::OpenCode))
+        AgentType::from_label(&pane_fields[pane_line_field::AGENT]).is_some_and(|agent| {
+            matches!(
+                agent,
+                AgentType::Codex | AgentType::OpenCode | AgentType::Lain
+            )
+        })
     })
 }
 
@@ -659,6 +666,24 @@ mod tests {
 
         assert!(snapshot.tree_has_agent(&[100], &AgentType::OpenCode));
         assert!(!snapshot.tree_has_agent(&[100], &AgentType::Codex));
+    }
+
+    #[test]
+    fn process_tree_has_agent_matches_lain_with_args() {
+        let snapshot = ProcessSnapshot::from_ps_output(
+            "100 1 zsh -zsh\n101 100 lain /Users/u/.local/bin/lain -r\n",
+        );
+
+        assert!(snapshot.tree_has_agent(&[100], &AgentType::Lain));
+        assert!(!snapshot.tree_has_agent(&[100], &AgentType::OpenCode));
+    }
+
+    #[test]
+    fn pane_output_needs_process_snapshot_for_lain() {
+        let mut fields = full_fields();
+        fields[pane_line_field::AGENT] = "lain";
+        let line = format!("main|@1|0|win|1|1|{}", make_pane_line(&fields));
+        assert!(pane_output_needs_process_snapshot(&line));
     }
 
     // ─── sanitize_prompt tests ──────────────────────────────────────
@@ -1149,6 +1174,30 @@ mod tests {
             !log.exists(),
             "activity log must be removed when the agent process is gone"
         );
+    }
+
+    #[test]
+    fn parse_pane_line_wipes_stale_state_for_lain_shell_pane() {
+        // lain has no process-exit hook either, so the poller owns teardown.
+        let _guard = test_mock::install();
+        let pane = "%LAIN_STALE";
+        test_mock::set(pane, PANE_AGENT, "lain");
+        test_mock::set(pane, PANE_STATUS, "running");
+        test_mock::set(pane, PANE_PROMPT, "previous run");
+
+        let mut fields = full_fields();
+        fields[pane_line_field::PANE_ID] = pane;
+        fields[pane_line_field::AGENT] = "lain";
+        fields[pane_line_field::PANE_CURRENT_COMMAND] = "zsh";
+        let line = make_pane_line(&fields);
+
+        assert!(parse_pane_line(&line).is_none());
+        for key in &[PANE_AGENT, PANE_STATUS, PANE_PROMPT] {
+            assert!(
+                !test_mock::contains(pane, key),
+                "{key} must be cleared after shell fallback sweep"
+            );
+        }
     }
 
     // ─── finalize_sessions ─────────────────────────────────────────
